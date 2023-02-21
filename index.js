@@ -63,6 +63,35 @@ const run = async () => {
       res.send({ status: false });
     });
 
+    app.patch("/cancel-apply", async (req, res) => {
+      const userId = req.body.userId;
+      const jobId = req.body.jobId;
+      const email = req.body.email;
+
+      console.log(jobId, email, userId);
+
+      const filter = { _id: ObjectId(jobId) };
+
+      const applyJob = await jobCollection.findOne(filter);
+      const remainApply = applyJob.applicants.filter(
+        (user) => user.email !== email
+      );
+
+      console.log(remainApply);
+
+      const updateDoc = {
+        applicants: remainApply,
+      };
+
+      const result = await jobCollection.updateOne(filter, updateDoc);
+
+      if (result.acknowledged) {
+        return res.send({ status: true, data: result });
+      }
+
+      res.send({ status: false });
+    });
+
     app.patch("/query", async (req, res) => {
       const userId = req.body.userId;
       const jobId = req.body.jobId;
@@ -134,6 +163,15 @@ const run = async () => {
       res.send({ status: true, data: result });
     });
 
+    app.get("/postJob/:email", async (req, res) => {
+      const email = req.params.email;
+      console.log(email);
+      const query = { authorEmail: email };
+      const cursor = jobCollection.find(query);
+      const result = await cursor.toArray();
+      res.send({ status: true, data: result });
+    });
+
     app.get("/job/:id", async (req, res) => {
       const id = req.params.id;
       console.log(id);
@@ -147,6 +185,14 @@ const run = async () => {
 
       const result = await jobCollection.insertOne(job);
 
+      res.send({ status: true, data: result });
+    });
+
+    app.delete("/job/:id", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+
+      const result = await jobCollection.deleteOne({ _id: ObjectId(id) });
       res.send({ status: true, data: result });
     });
   } finally {
