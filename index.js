@@ -23,6 +23,8 @@ const run = async () => {
     const db = client.db("jobbox");
     const userCollection = db.collection("user");
     const jobCollection = db.collection("job");
+    const notificationsCollection = db.collection("notifications");
+    const conversations = db.collection("conversation");
 
     app.post("/user", async (req, res) => {
       const user = req.body;
@@ -57,7 +59,13 @@ const run = async () => {
       const result = await jobCollection.updateOne(filter, updateDoc);
 
       if (result.acknowledged) {
-        return res.send({ status: true, data: result });
+        const notification = { ...req.body, isSeen: false };
+        const sendNotify = await notificationsCollection.insertOne(
+          notification
+        );
+        if (sendNotify.acknowledged) {
+          return res.send({ status: true, data: result });
+        }
       }
 
       res.send({ status: false });
@@ -68,8 +76,6 @@ const run = async () => {
       const jobId = req.body.jobId;
       const email = req.body.email;
 
-      console.log(jobId, email, userId);
-
       const filter = { _id: ObjectId(jobId) };
 
       const applyJob = await jobCollection.findOne(filter);
@@ -77,13 +83,15 @@ const run = async () => {
         (user) => user.email !== email
       );
 
-      console.log(remainApply);
+      const options = { upsert: true };
 
       const updateDoc = {
-        applicants: remainApply,
+        $set: {
+          applicants: remainApply,
+        },
       };
 
-      const result = await jobCollection.updateOne(filter, updateDoc);
+      const result = await jobCollection.updateOne(filter, updateDoc, options);
 
       if (result.acknowledged) {
         return res.send({ status: true, data: result });
@@ -97,6 +105,7 @@ const run = async () => {
       const jobId = req.body.jobId;
       const email = req.body.email;
       const question = req.body.question;
+      const userName = req.body.userName;
 
       const filter = { _id: ObjectId(jobId) };
       const updateDoc = {
@@ -104,6 +113,7 @@ const run = async () => {
           queries: {
             id: ObjectId(userId),
             email,
+            userName,
             question: question,
             reply: [],
           },
@@ -122,8 +132,6 @@ const run = async () => {
     app.patch("/reply", async (req, res) => {
       const userId = req.body.userId;
       const reply = req.body.reply;
-      console.log(reply);
-      console.log(userId);
 
       const filter = { "queries.id": ObjectId(userId) };
 
@@ -165,7 +173,6 @@ const run = async () => {
 
     app.get("/postJob/:email", async (req, res) => {
       const email = req.params.email;
-      console.log(email);
       const query = { authorEmail: email };
       const cursor = jobCollection.find(query);
       const result = await cursor.toArray();
@@ -174,7 +181,6 @@ const run = async () => {
 
     app.get("/job/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
 
       const result = await jobCollection.findOne({ _id: ObjectId(id) });
       res.send({ status: true, data: result });
@@ -190,9 +196,55 @@ const run = async () => {
 
     app.delete("/job/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
 
       const result = await jobCollection.deleteOne({ _id: ObjectId(id) });
+      res.send({ status: true, data: result });
+    });
+
+    app.get("/notifications/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { authorEmail: email };
+
+      const result = await notificationsCollection.find(query).toArray();
+
+      res.send({ status: true, data: result });
+    });
+
+    app.patch("/notifications/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const options = { upsert: true };
+
+      const updateDoc = {
+        $set: {
+          isSeen: true,
+        },
+      };
+
+      const result = await notificationsCollection.updateOne(
+        query,
+        updateDoc,
+        options
+      );
+      res.send({ status: true, data: result });
+    });
+
+    app.get("/messages", async (req, res) => {
+      const result = await userCollection.find({}).toArray();
+      res.send({ status: true, data: result });
+    });
+
+    app.post("/send-messages", async (req, res) => {
+      const data = req.body;
+      const result = await conversations.insertOne(data);
+      res.send({ status: true, data: result });
+    });
+
+    app.get("/conversation/:id", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const query = { senderId: id };
+      const result = await conversations.find(query).toArray();
       res.send({ status: true, data: result });
     });
   } finally {
